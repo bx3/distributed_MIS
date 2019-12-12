@@ -20,38 +20,49 @@ fn main() {
         (version: "0.0")
         (author: "Bowen Xue.<bx3@uw.edu>")
         (about: "LOCAL network")
-        (@arg takeFile: -f --takeFile +takes_value "Sets graph file path, graph is an adjacency list, node id incrementally increases by 1, starting at 0")
         (@arg graph: -g --graph +takes_value "Sets graph file path, graph is an adjacency list, node id incrementally increases by 1, starting at 0")
+        (@arg node: -n --node +takes_value "get number of node")
+        (@arg degree: -d --degree +takes_value "a parameter for init attempt to create degree (1-degree), but may be more due to connection from other nodes")
+        (@arg run: -r --run +takes_value "get number of run")
     )
     .get_matches();
 
-    let takeFile = matches.value_of("graph").expect("missing take file flag");
-    let graph_path = matches.value_of("graph").expect("missing neighbor file");
-
-    let f = File::open(graph_path).expect("Unable to open file");
-    let f = BufReader::new(f);
+    let graph_path = matches.value_of("graph");
+    let mut input_num_node = matches.value_of("node");
+    let mut input_num_degree = matches.value_of("degree");
+    let mut input_num_run = matches.value_of("run");
+    println!("graph  path {:?}", graph_path);
+    println!("num_node {:?}", input_num_node);
+    println!("num_degree {:?}", input_num_degree);
+    println!("num_run {:?}", input_num_run);
 
     let mut graph: Vec<Vec<usize>> = vec![];
     let mut num_node = 0;
-    for line in f.lines() {
-        let line = line.expect("Unable to read line");
-        num_node += 1;
-        let tokens: Vec<&str> = line.split(' ').collect();
-        let src = tokens[0];
-        let mut dsts: Vec<usize> = vec![];
-        for i in 1..tokens.len() {
-            dsts.push(tokens[i].parse::<usize>().unwrap());
-        }
-
-        graph.push(dsts);
-    }
-    //println!("tokens {:?}", graph);
-    //
-   
-    let num_node = 5;
-    let num_degree = 2;
+    let mut num_degree = 0;
     let mut graph_creater = Creater::new();
-    let graph = graph_creater.generate(num_node, num_degree);
+
+    if graph_path.is_some() {
+        let f = File::open(graph_path.unwrap()).expect("Unable to open file");
+        let f = BufReader::new(f);
+        for line in f.lines() {
+            let line = line.expect("Unable to read line");
+            num_node += 1;
+            let tokens: Vec<&str> = line.split(' ').collect();
+            let src = tokens[0];
+            let mut dsts: Vec<usize> = vec![];
+            for i in 1..tokens.len() {
+                dsts.push(tokens[i].parse::<usize>().unwrap());
+            }
+            graph.push(dsts);
+        } 
+    } else {
+        num_node = input_num_node.unwrap().parse::<usize>().unwrap();
+        num_degree = input_num_degree.unwrap().parse::<usize>().unwrap(); 
+        graph = graph_creater.generate(num_node, num_degree);
+    }
+   
+    
+    
 
     let (central_sender, central_receiver) = channel();
     let mut node_list: Vec<Node> = vec![];
