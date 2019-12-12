@@ -16,6 +16,7 @@ pub struct Coordinator {
 pub enum Stage {
     Round1,
     Round2,
+    Reconfigure,
     Start,
 }
 
@@ -27,7 +28,7 @@ impl Coordinator {
         let num_node = nodes_sender.len();
         Coordinator {
             stage: Stage::Start,
-            round: 1,
+            round: 0,
             nodes_sender: nodes_sender,
             result_list: Vec::new(),
             num_node: num_node,
@@ -51,6 +52,8 @@ impl Coordinator {
         let mut curr_num_node = self.num_node;
         let mut stage1_num_message = 0;
         let mut stage2_num_message = 0;
+        let mut num_reconfig_message = 0;
+        let mut num_reconfig_node = 0;
         let mut nodes_to_remove: HashSet<usize> = HashSet::new();
         
         loop {
@@ -67,7 +70,7 @@ impl Coordinator {
                 },
                 Stage::Round1 => {
                     if stage1_num_message == curr_num_node {
-                        println!("Coordinator Round 1 all collected");
+                        println!("Coordinator Round 1 all collected, {} {} ", stage1_num_message, curr_num_node);
                         self.stage = Stage::Round2;
                         stage1_num_message = 0;
                         self.inform_nodes();
@@ -76,11 +79,22 @@ impl Coordinator {
                 Stage::Round2 => {
                     if stage2_num_message == curr_num_node {
                         println!("Coordinator Round 2 all collected");
-                        self.stage = Stage::Start;
-                        self.remove_neighbors(&nodes_to_remove);
+                        self.stage = Stage::Reconfigure;
                         stage2_num_message = 0;
-                        self.round += 1;
+                        num_reconfig_node = self.remove_neighbors(&nodes_to_remove);
+                        //)
+                        println!("num reconfig node {}", num_reconfig_node); 
                         nodes_to_remove.clear();
+                    }
+                },
+                Stage::Reconfigure => {
+                    if num_reconfig_message == num_reconfig_node {
+                        println!("Coordinator Stage::Reconfigure  all collected. Curr num node {}", curr_num_node);
+                        self.stage = Stage::Start; 
+                        num_reconfig_message = 0;
+                        num_reconfig_node = 0;
+                        curr_num_node =curr_num_node - nodes_to_remove.len();
+                        self.round += 1;
                     }
                 }
             }
@@ -102,6 +116,9 @@ impl Coordinator {
                         },
                         CentralMessage::Round1Complete => {
                             stage1_num_message += 1;         
+                        },
+                        CentralMessage::ReconfigComplete => {
+                            num_reconfig_message += 1;
                         }
                     }
                 },
@@ -127,11 +144,17 @@ impl Coordinator {
 
 
     // channel is FIFO
-    pub fn remove_neighbors(&mut self, nodes_to_remove: &HashSet<usize>) {
-        for sender in  self.nodes_sender.iter_mut() {
+    pub fn remove_neighbors(&mut self, nodes_to_remove: &HashSet<usize>) -> usize {
+        let mut num_node_notified = 0;
+        for node_id in 0..self.nodes_sender.len() {
+            let sender = &mut self.nodes_sender[node_id];
             if nodes_to_remove.len() > 0 {
-                sender.send(Message::RemoveNeighbors(nodes_to_remove.clone())); 
+                if ! nodes_to_remove.contains(&node_id) {
+                    sender.send(Message::RemoveNeighbors(nodes_to_remove.clone())); 
+                    num_node_notified += 1;
+                }
             }
         }
+        num_node_notified
     }
 }

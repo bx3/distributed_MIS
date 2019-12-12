@@ -65,7 +65,6 @@ fn main() {
     let mut coordinator = Coordinator::new(sender_list, central_receiver);
 
     // start simulation
-    let mut round = 1;
     while let Some(node) = node_list.pop() {
         node.start(); 
     }
