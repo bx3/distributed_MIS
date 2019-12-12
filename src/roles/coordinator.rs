@@ -82,18 +82,17 @@ impl Coordinator {
                         self.stage = Stage::Reconfigure;
                         stage2_num_message = 0;
                         num_reconfig_node = self.remove_neighbors(&nodes_to_remove);
-                        //)
                         println!("num reconfig node {}", num_reconfig_node); 
-                        nodes_to_remove.clear();
                     }
                 },
                 Stage::Reconfigure => {
                     if num_reconfig_message == num_reconfig_node {
+                        curr_num_node =curr_num_node - nodes_to_remove.len();
                         println!("Coordinator Stage::Reconfigure  all collected. Curr num node {}", curr_num_node);
                         self.stage = Stage::Start; 
                         num_reconfig_message = 0;
                         num_reconfig_node = 0;
-                        curr_num_node =curr_num_node - nodes_to_remove.len();
+                        nodes_to_remove.clear();
                         self.round += 1;
                     }
                 }

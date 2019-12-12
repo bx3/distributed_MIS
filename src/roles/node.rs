@@ -128,7 +128,10 @@ impl Node {
     }
 
     fn send_neighbor(&mut self, neighbor_id: usize, message: Message) {
-        let neighbor_context = self.neighbors.get_mut(&neighbor_id).expect("unable to find neighbor");
+        let neighbor_context = match self.neighbors.get_mut(&neighbor_id) {
+            Some(nc) => nc,
+            None => panic!("{}.{} unable to find neighbor {}", self.round, self.id, neighbor_id),
+        };
         if !neighbor_context.send(message) {
             self.neighbors.remove(&neighbor_id); 
         }
@@ -143,7 +146,7 @@ impl Node {
                 let result = NodeResult {
                     id: self.id,
                     is_in_mis: true,
-                    nodes_to_remove: vec![],
+                    nodes_to_remove: vec![self.id],
                 };
                 println!("{}. id {} Join MIS", self.round, self.id);
                 self.central_sender.send(CentralMessage::Finish(result)).expect("central send fail");
@@ -206,7 +209,7 @@ impl Node {
                                     let result = NodeResult {
                                         id: self.id,
                                         is_in_mis: self.is_in_mis,
-                                        nodes_to_remove: self.get_neighbors_id(),
+                                        nodes_to_remove: vec![self.id],
                                     };
                                     self.central_sender.send(CentralMessage::Finish(result)).expect("unable to send to central");  
                                     println!("        {} leave network", self.id);

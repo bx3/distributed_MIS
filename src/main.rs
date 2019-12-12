@@ -2,6 +2,8 @@ mod roles;
 use std::thread;
 use roles::node::{Node, Message, NodeResult, CentralMessage};
 use roles::coordinator::{Coordinator};
+use roles::creater::{Creater};
+use roles::verifier::{Verifier};
 
 #[macro_use]
 extern crate clap;
@@ -18,10 +20,12 @@ fn main() {
         (version: "0.0")
         (author: "Bowen Xue.<bx3@uw.edu>")
         (about: "LOCAL network")
+        (@arg takeFile: -f --takeFile +takes_value "Sets graph file path, graph is an adjacency list, node id incrementally increases by 1, starting at 0")
         (@arg graph: -g --graph +takes_value "Sets graph file path, graph is an adjacency list, node id incrementally increases by 1, starting at 0")
     )
     .get_matches();
 
+    let takeFile = matches.value_of("graph").expect("missing take file flag");
     let graph_path = matches.value_of("graph").expect("missing neighbor file");
 
     let f = File::open(graph_path).expect("Unable to open file");
@@ -42,6 +46,12 @@ fn main() {
         graph.push(dsts);
     }
     //println!("tokens {:?}", graph);
+    //
+   
+    let num_node = 5;
+    let num_degree = 2;
+    let mut graph_creater = Creater::new();
+    let graph = graph_creater.generate(num_node, num_degree);
 
     let (central_sender, central_receiver) = channel();
     let mut node_list: Vec<Node> = vec![];
@@ -74,6 +84,12 @@ fn main() {
     
     let mis = coordinator.get_mis_result();
     println!("mis {:?}", mis);
+    
+    let mut verifier = Verifier::new(&mis, &graph);
+    let result = verifier.verify();
+
+    println!("graph {:?}", graph);
+    println!("Result {}", result);
 }
 
 
