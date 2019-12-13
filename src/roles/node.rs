@@ -4,6 +4,7 @@ use rand::{Rng, thread_rng};
 use std::sync::mpsc::{self, channel, Sender, Receiver, TryRecvError};
 use std::collections::{HashMap, HashSet};
 use std::{thread, time};
+use std::thread::JoinHandle;
 
  
 
@@ -11,7 +12,7 @@ use std::{thread, time};
 pub enum Message {
     Request((usize, usize)), //neighbor id, round
     Response(Data),
-    JoinedMIS(bool),
+    JoinedMIS((bool, usize)),
     RemoveNeighbors(HashSet<usize>),
     Start(usize),
     StartRound2,
@@ -22,7 +23,13 @@ pub enum CentralMessage {
     Step(usize), //id
     Finish(NodeResult), 
     Round1Complete,
-    ReconfigComplete,
+    ReconfigComplete(ReconfigResult), //leaving isolated node id
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ReconfigResult {
+    pub id: usize,
+    pub is_leaving: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -116,10 +123,10 @@ impl Node {
         }
     }
 
-    pub fn start(mut self) {
+    pub fn start(mut self) -> JoinHandle<()>{
         std::thread::spawn(move || {
             self.listen() 
-        });
+        })
     }
 
 
@@ -142,22 +149,13 @@ impl Node {
         let mut any_neighbor_joined: bool = false;
         let peer_receiver = self.receiver.take().unwrap();
         loop {
-            if self.neighbors.len() == 0{
-                let result = NodeResult {
-                    id: self.id,
-                    is_in_mis: true,
-                    nodes_to_remove: vec![self.id],
-                };
-                println!("{}. id {} Join MIS", self.round, self.id);
-                self.central_sender.send(CentralMessage::Finish(result)).expect("central send fail");
-                break;
-            }
+            
 
             match peer_receiver.recv() {
                 Ok(message) => {
                     match message {
                         Message::Request((neighbor_id, round)) => {
-                            println!("{}.{} Message::Request {} -> {}. request round {}", self.round, self.id, neighbor_id, self.id, round);
+                            //println!("{}.{} Message::Request {} -> {}. request round {}", self.round, self.id, neighbor_id, self.id, round);
                             let data = Data {
                                 round: self.round,
                                 sender_id: self.id,
@@ -167,7 +165,7 @@ impl Node {
                             self.send_neighbor(neighbor_id, Message::Response(data));
                         },
                         Message::Response(data) => {
-                            println!("{}.{} Message::Response", self.round, self.id);
+                            //println!("{}.{} Message::Response", self.round, self.id);
                             // check if any neighbor get marked
                             self.num_response += 1; 
                             match self.neighbors.get_mut(&data.sender_id) {
@@ -177,15 +175,15 @@ impl Node {
                                 None => unreachable!(),
                             } 
                             if self.num_response == self.neighbors.len() {
-                                println!("{}.{} Message::Response {} {}", self.round, self.id, self.num_response, self.neighbors.len());
+                                //println!("{}.{} Message::Response {} {}", self.round, self.id, self.num_response, self.neighbors.len());
                                 self.central_sender.send(CentralMessage::Round1Complete).expect("unable to send Round1Complete"); 
                             }
                         },
                         Message::StartRound2 => {
-                            println!("{}.{} Message::StartRound2", self.round, self.id);
+                            //println!("{}.{} Message::StartRound2", self.round, self.id);
                             // first round exchange phase finishes
                             if !self.is_any_neighbor_marked() && self.is_get_marked {
-                                println!("{} join mis", self.id);
+                                //println!("{} join mis", self.id);
                                 self.is_in_mis = true;
                             } else {
                                 let effective_degree = self.get_effective_degree();
@@ -197,11 +195,11 @@ impl Node {
                             }
                             let neighbors: Vec<usize> = self.neighbors.keys().map(|&x| x).collect();
                             for neighbor_id in neighbors {
-                                self.send_neighbor(neighbor_id, Message::JoinedMIS(self.is_in_mis));
+                                self.send_neighbor(neighbor_id, Message::JoinedMIS((self.is_in_mis, self.id)));
                             }
                         },
-                        Message::JoinedMIS(is_neighbor_joined) => {
-                            println!("{}.{} Message::JoinedMIS {}", self.round, self.id, is_neighbor_joined);
+                        Message::JoinedMIS((is_neighbor_joined, neighbor_id)) => {
+                            //println!("{}.{} Message::JoinedMIS {} {}", self.round, self.id, is_neighbor_joined, neighbor_id);
                             num_neighbor_joined += 1;
                             any_neighbor_joined = any_neighbor_joined | is_neighbor_joined;
                             if num_neighbor_joined == self.neighbors.len() {
@@ -212,28 +210,46 @@ impl Node {
                                         nodes_to_remove: vec![self.id],
                                     };
                                     self.central_sender.send(CentralMessage::Finish(result)).expect("unable to send to central");  
-                                    println!("        {} leave network", self.id);
-                                    break;
+                                    //println!("        {} leave network", self.id);
                                 } else {
-                                    println!("        {} stay network {:?} ", self.id, self.debug_mark());
+                                    //println!("        {} stay network {:?} ", self.id, self.debug_mark());
                                     self.central_sender.send(CentralMessage::Step(self.id)).expect("central send fail");  
                                 }
                                 num_neighbor_joined = 0;
                             }
                         },
                         Message::RemoveNeighbors(neighbors_id) => {
-                            println!("{}.{} Message RemoveNeighbors {:?}", self.round,self.id, neighbors_id);
+                            //println!("{}.{} Message RemoveNeighbors {:?}", self.round,self.id, neighbors_id);
                             for neighbor_id in neighbors_id.iter() {
                                 if *neighbor_id == self.id {
                                     self.clean_neighbors();
+                                    drop(peer_receiver);
                                     return; 
                                 }
                                 self.neighbors.remove(neighbor_id);
                             }
-                            self.central_sender.send(CentralMessage::ReconfigComplete).expect("unable to send reconfigcomplete");
+                            let mut reconfig_result = ReconfigResult {
+                                id: self.id,
+                                is_leaving: false,
+                            };
+
+                            if self.neighbors.len() == 0{
+                                let result = NodeResult {
+                                    id: self.id,
+                                    is_in_mis: true,
+                                    nodes_to_remove: vec![self.id],
+                                };
+                                //println!("{}. id {} Join MIS", self.round, self.id);
+                                reconfig_result.is_leaving = true;
+                                self.central_sender.send(CentralMessage::ReconfigComplete(reconfig_result)).expect("central send fail");
+                                //println!("{} thread exit", self.id);
+                                break;
+                            } 
+                            
+                            self.central_sender.send(CentralMessage::ReconfigComplete(reconfig_result)).expect("unable to send reconfigcomplete");
                         },
                         Message::Start(round) => {
-                            println!("{}.{} Message::Start", round, self.id);
+                            //println!("{}.{} Message::Start", round, self.id);
                             // join MIS if there is no neighbors
                             
 
@@ -245,7 +261,10 @@ impl Node {
                         },
                     } 
                 },
-                Err(e) => println!("node {} try recv error {:?}", self.id, e),
+                Err(e) => {
+                    //println!("{} thread exit", self.id);
+                    break; //println!("node {} try recv error {:?}", self.id, e),
+                },
             } 
         }
         drop(peer_receiver);
@@ -261,7 +280,8 @@ impl Node {
 
     fn decide_if_get_mark(&self) -> bool {
         let rand_float = thread_rng().gen_range(0.0, 1.0);
-        return rand_float > self.desire_level;
+        //println!("float {}", rand_float);
+        return rand_float < self.desire_level;
     }
 
     fn request_all_neighbors(&mut self) {

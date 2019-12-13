@@ -1,0 +1,13 @@
+[package]
+name = "distributed_MIS"
+version = "0.1.0"
+authors = ["bx3 <bx3@uw.edu>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"]}
+bincode = "1.2.0"
+clap = "2.33.0"
+rand = "0.5.0"

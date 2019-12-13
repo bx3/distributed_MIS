@@ -58,19 +58,24 @@ impl Coordinator {
         
         loop {
             if self.result_list.len() == self.num_node {
+                //let mut re: HashSet<usize> = HashSet::new();
+                //for i in 0..self.num_node {
+                //    re.insert(i); 
+                //}
+                //self.remove_neighbors(&re);
                 break;            
             }
 
             match self.stage {
                 Stage::Start => {
-                    println!("Coordinator Start");
+                    //println!("Coordinator Start");
                     self.stage = Stage::Round1;
                     self.start_next_round();             
                     
                 },
                 Stage::Round1 => {
                     if stage1_num_message == curr_num_node {
-                        println!("Coordinator Round 1 all collected, {} {} ", stage1_num_message, curr_num_node);
+                        //println!("Coordinator Round 1 all collected, {} {} ", stage1_num_message, curr_num_node);
                         self.stage = Stage::Round2;
                         stage1_num_message = 0;
                         self.inform_nodes();
@@ -78,17 +83,17 @@ impl Coordinator {
                 },
                 Stage::Round2 => {
                     if stage2_num_message == curr_num_node {
-                        println!("Coordinator Round 2 all collected");
+                        //println!("Coordinator Round 2 all collected");
                         self.stage = Stage::Reconfigure;
                         stage2_num_message = 0;
                         num_reconfig_node = self.remove_neighbors(&nodes_to_remove);
-                        println!("num reconfig node {}", num_reconfig_node); 
+                        //println!("num reconfig node {}", num_reconfig_node); 
                     }
                 },
                 Stage::Reconfigure => {
                     if num_reconfig_message == num_reconfig_node {
                         curr_num_node =curr_num_node - nodes_to_remove.len();
-                        println!("Coordinator Stage::Reconfigure  all collected. Curr num node {}", curr_num_node);
+                        //println!("Coordinator Stage::Reconfigure  all collected. Curr num node {}", curr_num_node);
                         self.stage = Stage::Start; 
                         num_reconfig_message = 0;
                         num_reconfig_node = 0;
@@ -116,18 +121,25 @@ impl Coordinator {
                         CentralMessage::Round1Complete => {
                             stage1_num_message += 1;         
                         },
-                        CentralMessage::ReconfigComplete => {
+                        CentralMessage::ReconfigComplete(result) => {
                             num_reconfig_message += 1;
+                            nodes_to_remove.insert(result.id);
+                            let node_result = NodeResult {
+                                id: result.id,
+                                is_in_mis: true,
+                                nodes_to_remove: vec![],
+                            };
+                            self.result_list.push(node_result);
                         }
                     }
                 },
                 Err(TryRecvError::Empty) =>(),
                 Err(e) => {
-                    println!("result receiver try receive error {:?}", e); 
+                    //println!("result receiver try receive error {:?}", e); 
                 },
             }
         } 
-        println!("simulation finishes");
+        //println!("simulation finishes");
     }
 
     pub fn get_mis_result(&self) -> HashSet<usize> {
